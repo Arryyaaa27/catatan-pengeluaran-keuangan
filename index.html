@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Catatan Pengeluaran Mamah</title>
+    <style>
+        body { font-family: 'Segoe UI', Arial, sans-serif; padding: 15px; background-color: #f4f6f9; margin: 0; }
+        .container { max-width: 500px; margin: auto; background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.08); }
+        h2 { text-align: center; color: #333; margin-top: 0; }
+        label { font-size: 13px; font-weight: bold; color: #666; display: block; margin-top: 10px; }
+        input, select, button { width: 100%; padding: 12px; margin-top: 5px; border-radius: 8px; border: 1px solid #ccc; box-sizing: border-box; font-size: 15px; }
+        button { background-color: #28a745; color: white; border: none; font-weight: bold; cursor: pointer; margin-top: 15px; }
+        button:disabled { background-color: #a5d6a7; cursor: not-allowed; }
+        
+        /* Style Tabel Riwayat */
+        .history-section { margin-top: 25px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 14px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #eee; }
+        th { background-color: #f8f9fa; color: #555; }
+        .btn-delete { background-color: #dc3545; color: white; padding: 6px 10px; border-radius: 5px; font-size: 12px; margin-top: 0; width: auto; }
+        .loading { text-align: center; color: #888; font-style: italic; }
+        #status { text-align: center; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Catatan Belanja Mamah 🛒</h2>
+    
+    <!-- Form Input Data -->
+    <form id="expenseForm">
+        <label>Nama Barang / Catatan</label>
+        <input type="text" id="itemName" placeholder="Contoh: Tiket Masuk / Minyak Goreng" required>
+
+        <label>Harga (Rp)</label>
+        <input type="text" id="itemPrice" placeholder="Contoh: 50.000" inputmode="numeric" required>
+
+        <label>Kategori</label>
+        <select id="itemCategory">
+            <option value="Belanja Dapur / Makanan">🛒 Belanja Dapur / Makanan</option>
+            <option value="Kebutuhan Rumah Tangga">🏠 Kebutuhan Rumah Tangga</option>
+            <option value="Tagihan & Utilitas">⚡ Tagihan & Utilitas</option>
+            <option value="Transportasi & BBM">🛵 Transportasi & BBM</option>
+            <option value="Kesehatan & Obat">💊 Kesehatan & Obat</option>
+            <option value="Liburan & Jalan-Jalan">✈️ Liburan & Jalan-Jalan</option>
+            <option value="Lainnya">📦 Lainnya</option>
+        </select>
+
+        <button type="submit" id="submitBtn">➕ Simpan Pengeluaran</button>
+    </form>
+    <div id="status"></div>
+
+    <!-- Riwayat & Tombol Hapus -->
+    <div class="history-section">
+        <h3>Riwayat Catatan</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Barang</th>
+                    <th>Harga</th>
+                    <th>Aksi</th>
+                </tr>
+            </thead>
+            <tbody id="historyTableBody">
+                <tr><td colspan="3" class="loading">Memuat data...</td></tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<script>
+    // ⚠️ PASTE LINK GOOGLE APPS SCRIPT KAMU DI SINI ⚠️
+    const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwYOXykRTUm-ZWJEMrfaMABGUKgIOnqLYF41lsfa6zTJFUcMl4dL8QxBQDN1l5hpjoxUA/exec";
+
+    const form = document.getElementById('expenseForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const statusDiv = document.getElementById('status');
+    const tableBody = document.getElementById('historyTableBody');
+    const itemNameInput = document.getElementById('itemName');
+    const itemPriceInput = document.getElementById('itemPrice');
+    const itemCategorySelect = document.getElementById('itemCategory');
+
+    // FITUR OTOMATIS FORMAT RIBUAN SAAT DIKETIK
+    itemPriceInput.addEventListener('input', function() {
+        let number = this.value.replace(/\D/g, '');
+        if (number) {
+            this.value = Number(number).toLocaleString('id-ID');
+        } else {
+            this.value = '';
+        }
+    });
+
+    // FITUR AUTO-DETECT KATEGORI
+    itemNameInput.addEventListener('input', function() {
+        const text = this.value.toLowerCase();
+
+        const kataDapur = ['minyak', 'tempe', 'tahu', 'beras', 'telur', 'sayur', 'ayam', 'daging', 'cabai', 'bawang', 'ikan', 'makanan', 'minuman', 'kopi', 'gula', 'garam', 'bumbu', 'buah', 'roti', 'susu', 'teh', 'terasi', 'jajan', 'pasar'];
+        const kataRumah = ['sabun', 'sampo', 'shampoo', 'detergen', 'rinso', 'pewangi', 'tisue', 'tisu', 'sapu', 'pel', 'plastik', 'sunlight', 'spons'];
+        const kataTagihan = ['listrik', 'token', 'air', 'pdam', 'wifi', 'indihome', 'pulsa', 'kuota', 'bpjs', 'netflix'];
+        const kataTransport = ['bensin', 'pertalite', 'pertamax', 'parkir', 'ongkos', 'ojek', 'grab', 'gojek', 'tol'];
+        const kataKesehatan = ['obat', 'vitamin', 'dokok', 'klinik', 'apotik', 'masker', 'panadol'];
+        const kataLiburan = ['jalan', 'liburan', 'rekreasi', 'wisata', 'pantai', 'tiket', 'hotel', 'villa', 'renang', 'wahana'];
+
+        if (kataDapur.some(kata => text.includes(kata))) itemCategorySelect.value = "Belanja Dapur / Makanan";
+        else if (kataRumah.some(kata => text.includes(kata))) itemCategorySelect.value = "Kebutuhan Rumah Tangga";
+        else if (kataTagihan.some(kata => text.includes(kata))) itemCategorySelect.value = "Tagihan & Utilitas";
+        else if (kataTransport.some(kata => text.includes(kata))) itemCategorySelect.value = "Transportasi & BBM";
+        else if (kataKesehatan.some(kata => text.includes(kata))) itemCategorySelect.value = "Kesehatan & Obat";
+        else if (kataLiburan.some(kata => text.includes(kata))) itemCategorySelect.value = "Liburan & Jalan-Jalan";
+    });
+
+    // 1. FUNGSI READ DATA
+    function loadData() {
+        fetch(SCRIPT_URL)
+            .then(res => res.json())
+            .then(data => {
+                tableBody.innerHTML = '';
+                if (data.length === 0) {
+                    tableBody.innerHTML = '<tr><td colspan="3" class="loading">Belum ada catatan.</td></tr>';
+                    return;
+                }
+                
+                data.reverse().forEach(item => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td><b>${item.itemName}</b><br><small style="color:#888">${item.itemCategory}</small></td>
+                        <td>Rp ${Number(item.itemPrice).toLocaleString('id-ID')}</td>
+                        <td>
+                            <button class="btn-delete" onclick="deleteData(${item.rowIndex})">🗑️ Hapus</button>
+                        </td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            })
+            .catch(err => {
+                tableBody.innerHTML = '<tr><td colspan="3" class="loading" style="color:red;">Gagal memuat data.</td></tr>';
+            });
+    }
+
+    // 2. FUNGSI CREATE DATA
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+        submitBtn.disabled = true;
+        submitBtn.innerText = "Lagi Menyimpan...";
+
+        const payload = {
+            itemName: itemNameInput.value,
+            itemPrice: itemPriceInput.value.replace(/\./g, ''), // Hapus titik sebelum dikirim
+            itemCategory: itemCategorySelect.value
+        };
+
+        fetch(SCRIPT_URL, {
+            method: 'POST',
+            mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        })
+        .then(() => {
+            statusDiv.style.color = "green";
+            statusDiv.innerText = "✅ Berhasil Disimpan!";
+            form.reset();
+            submitBtn.disabled = false;
+            submitBtn.innerText = "➕ Simpan Pengeluaran";
+            
+            setTimeout(loadData, 1500);
+        })
+        .catch(() => {
+            statusDiv.style.color = "red";
+            statusDiv.innerText = "❌ Gagal menyimpan.";
+            submitBtn.disabled = false;
+        });
+    });
+
+    // 3. FUNGSI DELETE DATA
+    function deleteData(rowIndex) {
+        if (confirm("Yakin mau hapus data pengeluaran ini?")) {
+            tableBody.innerHTML = '<tr><td colspan="3" class="loading">Menghapus data...</td></tr>';
+            
+            fetch(SCRIPT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action: "DELETE", rowIndex: rowIndex })
+            })
+            .then(() => {
+                setTimeout(loadData, 1500);
+            });
+        }
+    }
+
+    loadData();
+</script>
+
+</body>
+</html>
